@@ -11,10 +11,10 @@ const proxy = require("express-http-proxy");
 
 // Configuration
 //
-const PROXY_TARGET = process.env.PROXY_TARGET || "https://lrs.adlnet.gov";
-const KAFKA_BROKER = process.env.KAFKA_BROKER || "http://192.168.30.188:9092";
-const KAFKA_XAPI_TOPIC = process.env.KAFKA_XAPI_TOPIC || "topic";
-const PORT = process.env.PORT || 8085;
+const PROXY_TARGET = (process.env.PROXY_TARGET || "https://lrs.adlnet.gov");
+const KAFKA_BROKER = (process.env.KAFKA_BROKER || "http://192.168.30.188:9092");
+const KAFKA_XAPI_TOPIC = (process.env.KAFKA_XAPI_TOPIC || "topic");
+const PORT = (process.env.PORT || 8085);
 
 // Create an instance of the express class and declare our port
 const app = express();

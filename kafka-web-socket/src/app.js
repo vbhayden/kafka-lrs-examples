@@ -9,17 +9,17 @@ const bodyParser = require("body-parser");
 const WebSocket = require('ws');
 
 // Get these from Docker if available
-const KAFKA_BROKER = process.env.KAFKA_BROKER || "192.168.30.188:9092";
-const KAFKA_XAPI_TOPIC = process.env.KAFKA_XAPI_TOPIC || "topic";
-const APP_PORT = process.env.APP_PORT || 3001;
-const WS_PORT = process.env.WS_PORT ||  3002;
+const KAFKA_BROKER = (process.env.KAFKA_BROKER || "192.168.30.188:9092");
+const KAFKA_XAPI_TOPIC = (process.env.KAFKA_XAPI_TOPIC || "xapi");
+const APP_PORT = (process.env.APP_PORT || 3001);
+const WS_PORT = (process.env.WS_PORT ||  3002);
 
 // Object that knows about Kafka and the WebSocket
 var helper = {
     kafkaAlive: false,
     kafkaCallback: null,
     sockets: [
-
+        
     ]
 };
 
@@ -74,6 +74,8 @@ wss.on('connection', function connection(ws) {
 const consumer = new kafka.SimpleConsumer({
     connectionString: KAFKA_BROKER
 });
+
+// Callback whenever we get a new message from Kafka
 var dataHandler = function (messageSet, topic, partition) {
     messageSet.forEach(function (m) {
 
@@ -86,13 +88,25 @@ var dataHandler = function (messageSet, topic, partition) {
         }
     });
 };
+
+// Initialize our consumer with the promise
 consumer.init()
+
+// Assuming the initialization goes well, this will be called afterwards
 .then(function(){
-    console.log("[Kafka] Consumer initialized, will target: ", KAFKA_BROKER);
+    console.log("[Kafka] Consumer initialized, will target:%s, on topic: %s", KAFKA_BROKER, KAFKA_XAPI_TOPIC);
 
     // Message callback
-    consumer.subscribe(KAFKA_XAPI_TOPIC, dataHandler);
+    consumer.subscribe(KAFKA_XAPI_TOPIC, dataHandler)
+    .then(function(result) {
+        console.log("[Kafka] result: ", result);
+    })
+    .catch(function(error){
+        console.log("[Kafka] Error consuming statement: ", error);
+    });
 })
+
+// If there's a problem, this will come up
 .catch(function(error){
     console.log("[Kafka] Initialization Error: ", error);
 });

@@ -13,8 +13,8 @@ announce "Git"
 
 if ! [ -x "$(command -v git)" ]; then
 	
-	# Curl is easy
-	apt install -y curl
+	# Git is easy
+	apt install -y git
 	
 else
 	echo "Skipping, Git already installed!"
@@ -24,7 +24,7 @@ announce "Curl"
 
 if ! [ -x "$(command -v curl)" ]; then
 	
-	# Curl is easy
+	# Curl is also easy
 	apt-get install -y curl
 	
 else

@@ -14,12 +14,40 @@ These instructions are for Ubuntu 16.  They may work for other operating sytsems
 - `git clone https://github.com/vbhayden/kafka-lrs-examples`
 - `cd kafka-lrs-examples`
 - `sudo ./install-reqs.sh`
-- Adjust the `.env` file for your own use
+- Adjust the `.env` file for your own use (see below)
 - `sudo ./rebuild.sh`
 
 The initial Kafka container **might take awhile to warm up**, so this might cause the two NodeJS containers to restart
 due to connection failures.  These services will eventually be dine, but you can check on the Kafka container with 
 `sudo docker logs -f docker_kafka` or check all containers with `sudo docker ps`.
+
+### Configuring the .env file
+To use this project, you will need to configure this `.env` file with your own values:
+- **PROXY_TARGET**: Endpoint for the LRS you want to use (i.e. `https://my-lrs.net/`)
+- **KAFKA_BROKER**: Address of the Kafka broker (whatever IP your Ubuntu instance is using on the network) 
+- **KAFKA_XAPI_TOPIC**: Name of the topic you want to use ("topic" by default)
+
+Once this file is configured, these values will be used in `docker-compose.yml`.
+
+### Using the LRS Proxy
+After the containers come online, you'll have access to the LRS proxy service.  To use this service, treat it as though you were
+communicating with your LRS itself.
+
+As an example, suppose you are sending statements to the public ADL LRS at `https://lrs.adlnet.gov` and your Ubuntu has an address
+of `192.168.30.188` on the network.  Your `.env` file would be configured as (its default value of)
+```
+PROXY_TARGET=https://lrs.adlnet.gov
+KAFKA_BROKER=192.168.30.188:9092
+KAFKA_XAPI_TOPIC=topic
+```
+
+Once the proxy service is online, your activities should target the proxy instead of your LRS.  By default, the proxy service 
+uses port `8085`, so your endpoint would change from
+```
+https://lrs.adlnet.gov/xapi --> http://192.168.30.188:8085/xapi
+```
+
+You can then monitor statement traffic through the Web Socket page.
 
 ## Individual Services
 While the Kafka and Zookeeper instances are built from Confluent's Docker images, the NodeJS services are proprietary and their

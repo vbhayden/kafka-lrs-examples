@@ -18,8 +18,8 @@ These instructions are for Ubuntu 16.  They may work for other operating sytsems
 - `sudo ./rebuild.sh`
 
 The initial Kafka container **might take awhile to warm up**, so this might cause the two NodeJS containers to restart
-due to connection failures.  You can check on the Kafka container with `sudo docker logs -f docker_kafka` or check all
-containers with `sudo docker ps` until the "Restarting(1)" messages are gone.
+due to connection failures.  These services will eventually be dine, but you can check on the Kafka container with 
+`sudo docker logs -f docker_kafka` or check all containers with `sudo docker ps`.
 
 ## Individual Services
 While the Kafka and Zookeeper instances are built from Confluent's Docker images, the NodeJS services are proprietary and their

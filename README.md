@@ -27,7 +27,7 @@ source is available in this repo.  Brief notes will be included here, with more 
 folders.
 
 ### Kafka Web Socket Service
-A NodeJS service that produces two servers (http on 3001 and ws (WebSocket) on 3002).  This service connects to the Kafka instance
+A NodeJS service that produces two servers (`http://` on 3001 and `ws://` on 3002).  This service connects to the Kafka instance
 and consumes its configured topic ("topic" by default).  Each consumed message is then sent as a message through each open WebSocket.
 
 Navigating to 3001 will return a page that connects to the WebSocket server and writes those messages to a log on the page.

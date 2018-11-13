@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+    
+    <!-- Page Title -->
+    <title>Kafka Web Socket Example</title>
+
+    <!-- Header -->
+    <% include partials/header.html %>
+
+    <body>
+        
+        <hr>
+
+        <!-- Summary Container -->
+        <div class="container">
+
+            <!-- Header and general explanation -->
+            <h2>
+                Kafka with Web Sockets
+            </h2>
+            <p>
+                This is a simple example page intended to demonstrate how to use Kafka's messaging system with
+                WebSockets.  This page allows you to connect to a Kafka Consumer and receive notifications whenever
+                that consumer receives a new message.
+            </p>
+
+            <hr>
+                
+
+            <h4>Stream Log</h4>
+            <div class="bg-dark">
+                <p id="socket-output" class="text-light" style="padding: 20px; height: 500px; overflow-y: scroll; overflow-x: scroll">
+
+                </p>
+            </div>
+
+            <h4>Controls</h4>
+            <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
+                <div>
+                    <button type="button" class="btn btn-secondary" id="reconnect-button">Reconnect</button>
+                </div>
+                <button type="button" class="btn btn-secondary" id="disconnect-button">Disconnect</button>
+                <button type="button" class="btn btn-secondary" id="clear-button">Clear Log</button>
+            </div>
+            <br>
+
+            <h4>Socket Message Count</h4>
+            <p id="message-counter">
+
+            </p>
+        </div>
+    </body>
+
+    <script>
+        // Get our log object
+        var output = document.getElementById("socket-output");
+        var reconnectButton = document.getElementById("reconnect-button");
+        var disconnectButton = document.getElementById("disconnect-button");
+        var clearButton = document.getElementById("clear-button");
+        var messageCounter = document.getElementById("message-counter");
+
+        // Keep track of our socket
+        var socket = null;
+        var messageCount = 0;
+
+        // Button callbacks
+        reconnectButton.onclick = reconnect;
+        disconnectButton.onclick = disconnect;
+        clearButton.onclick = clear;
+
+        // Start by connecting
+        connect();
+
+        function appendLog(msg) {
+            output.innerHTML += msg + "<br>";          
+            updateCounter(++messageCount);
+
+            // Scroll down if necessary
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function updateCounter(count) {
+            messageCounter.innerText = count;
+        }
+
+        function connect() {
+
+            if (socket != undefined)
+                return;
+
+            // Get wherever we are now, minus the port
+            var parts = window.location.origin.split(":");
+            var socketAddress = "ws:" + parts[1] + ":3002";
+
+            // Create WebSocket connection.
+            socket = new WebSocket(socketAddress);
+
+            // Connection opened
+            socket.onopen = function (event) {
+                socket.send("Hello Server!");
+            };
+
+            // Listen for messages
+            socket.onmessage = function (event) {
+                appendLog("[" + event.origin + "]: " + event.data);
+            };
+
+            // Tell us when this is dead
+            socket.onclose = function(event) {
+                appendLog("[Socket closed!]");
+                socket = null;
+            };
+        }
+
+        function reconnect() {
+            if (socket != undefined) {
+                appendLog("Already connected!");
+            } else {
+                appendLog("Attempting connection ...");
+                connect();
+            }
+        }
+
+        function disconnect() {
+            if (socket != undefined) {
+                socket.close();
+                appendLog("Disconnected!");
+            }
+        }
+
+        function clear() {
+            output.textContent = '';
+            updateCounter(messageCount = 0);
+        }
+    </script>
+    <!-- Footer -->
+    <% include partials/footer.html %>
+</html>

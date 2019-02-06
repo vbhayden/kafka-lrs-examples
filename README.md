@@ -3,7 +3,7 @@ Collection of small services to interact with a single-node Kafka configuration,
 
 This repo is my own sandbox for learning how to use Kafka and is probably not suitable for production systems (if 
 that wasn't apparent from the "single-node" bit).  At the moment, only NodeJS and WebSocket examples are present,
-but, given ADL's use of Django and its vendors' use of Flask, Python examples will also be included later.
+but other examples will be included later.
 
 ## Setup
 While these services can be run manually, it's recommended to use Docker and Docker-Compose.  The docker-compose.yml file is configured

@@ -1,13 +1,17 @@
-# Kafka Examples with xAPI and Docker
-Collection of small services to interact with a single-node Kafka configuration, specifically using the **[Experience API](https://adlnet.gov/experience-api)**.
+# Kafka Example: ADL LRS w/ a Kafka Proxy
 
-This repo is my own sandbox for learning how to use Kafka and is probably not suitable for production systems (if 
-that wasn't apparent from the "single-node" bit).  At the moment, only NodeJS and WebSocket examples are present,
-but other examples will be included later.
+"What am I looking at?"
+
+This is an Nginx proxy balancing HTTP requests between 3 instances of a NodeJS service built to relay traffic to and from an LRS while producing Kafka messages with the validated xAPI statements.
+
+**Please Note:** *This is an experimental configuration.  It will likely change as we unearth nuances and best practices for handling this type of relay.* 
 
 ## Setup
-While these services can be run manually, it's recommended to use Docker and Docker-Compose.  The docker-compose.yml file is configured
-to use environment variables from the `.env` file, but as this is hidden on operating systems by default I might change that later.
+The Nginx instance and the NodeJS instances are configured using Docker-Compose and the `.env` file for environmental variables.  These variables will determine:
+- Kafka SASL credentials,
+- Kafka Broker locations,
+- The Kafka topic for these messages, and
+- The LRS being proxied
 
 These instructions are for Ubuntu 16.  They may work for other operating sytsems, but only Ubuntu 16 has been tested.
 
@@ -15,54 +19,37 @@ These instructions are for Ubuntu 16.  They may work for other operating sytsems
 - `cd kafka-lrs-examples`
 - `sudo ./install-reqs.sh`
 - Adjust the `.env` file for your own use (see below)
-- `sudo ./rebuild.sh`
+- `sudo docker-compose up -d --build`
 
-The initial Kafka container **might take awhile to warm up**, so this might cause the two NodeJS containers to restart
-due to connection failures.  These services will eventually be dine, but you can check on the Kafka container with 
-`sudo docker logs -f docker_kafka` or check all containers with `sudo docker ps`.
+The LRS needs to be configured after this, but you'll need to wait for the process to actually start.  When the LRS is available (**which can take awhile**), you need to create a superuser for the LRS.  This is done by navigating to the root directory of the project and running:
+```
+sudo ./create-admin.sh
+```
 
-### Configuring the .env file
-To use this project, you will need to configure this `.env` file with your own values:
-- **PROXY_TARGET**: Endpoint for the LRS you want to use (i.e. `https://my-lrs.net/`)
-- **KAFKA_BROKER**: Address of the Kafka broker (whatever IP your Ubuntu instance is using on the network) 
-- **KAFKA_XAPI_TOPIC**: Name of the topic you want to use ("topic" by default)
+After this, you should be done.
 
-Once this file is configured, these values will be used in `docker-compose.yml`.
+As each of the other containers are relatively lightweight, there shouldn't be much of a delay.  You can check the status with `sudo docker ps`, checking that nothing is restarting repeatedly.
+
+### Environment Variables
+Environment variables are broken into two files based on their scope within the TLA project (local and global).  
+
+### Configuring the `.env` file
+For variables specific to the LRS proxy, you will need to configure this `.env` file with your own values:
+- **PROXY_LRS_ROOT**: Root URL for the LRS being used, **must include protocol** (i.e. https://lrs.adlnet.gov)
+- **PROXY_PORT**: Port that the NodeJS services are using for traffic (`8085`)
+- **PROXY_INFER**: Whether or not to infer minor xAPI properties without retrieving statement as it appears in the LRS (`true`)
+- **HOSTNAME**: DNS / IP for the server running this stuff, **no protocol**
+- **KAFKA_BROKERS**: Comma-separated list of Kafka brokers, **no protocol** (i.e. 192.168.30.47:19092,192.168.30.47:29092)
+- **KAFKA_USE_SASL**: "true" if your Kafka brokers are using SASL auth
+- **KAFKA_SASL_USER**: SASL user for the Kafka cluster
+- **KAFKA_SASL_PASS**: SASL password for the Kafka cluster
+- **KAFKA_XAPI_TOPIC**: Kafka topic for the xAPI statements
 
 ### Using the LRS Proxy
 After the containers come online, you'll have access to the LRS proxy service.  To use this service, treat it as though you were
 communicating with your LRS itself.
 
-As an example, suppose you are sending statements to the public ADL LRS at `https://lrs.adlnet.gov` and your Ubuntu has an address
-of `192.168.30.188` on the network.  Your `.env` file would be configured as (its default value of)
+Once the proxy service is online, your activities should target the proxy instead of your LRS.  Assuming your proxies are running on `192.168.30.188`, your xAPI endpoint would become:
 ```
-PROXY_TARGET=https://lrs.adlnet.gov
-KAFKA_BROKER=192.168.30.188:9092
-KAFKA_XAPI_TOPIC=topic
+https://lrs.adlnet.gov/xapi --> http://192.168.30.188/xapi
 ```
-
-Once the proxy service is online, your activities should target the proxy instead of your LRS.  By default, the proxy service 
-uses port `8085`, so your endpoint would change from
-```
-https://lrs.adlnet.gov/xapi --> http://192.168.30.188:8085/xapi
-```
-
-You can then monitor statement traffic through the Web Socket page.
-
-## Individual Services
-While the Kafka and Zookeeper instances are built from Confluent's Docker images, the NodeJS services are proprietary and their
-source is available in this repo.  Brief notes will be included here, with more detailed explanations available in their corresponding
-folders.
-
-### Kafka Web Socket Service
-A NodeJS service that produces two servers (`http://` on 3001 and `ws://` on 3002).  This service connects to the Kafka instance
-and consumes its configured topic ("topic" by default).  Each consumed message is then sent as a message through each open WebSocket.
-
-Navigating to 3001 will return a page that connects to the WebSocket server and writes those messages to a log on the page.
-
-### Kafka LRS Proxy
-A NodeJS service that acts as a proxy for a targeted LRS.  This service can target an LRS and intercept all requests and responses
-as though it were the LRS itself.  
-
-After acknowledgement of a successful statement submission to the LRS, the proxy will then retrieve those statements from the LRS
-(in order to know exactly how appear in the LRS) and publish them to the configured Kafka topic.

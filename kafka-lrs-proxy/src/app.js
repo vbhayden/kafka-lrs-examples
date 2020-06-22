@@ -2,133 +2,102 @@
 //
 // This is a NodeJS Express application 
 //
-const cors = require("cors");
-const axios = require("axios");
-const kafka = require("no-kafka");
 const express = require("express");
-const bodyParser = require("body-parser");
 const proxy = require("express-http-proxy");
+const bodyParser = require("body-parser");
+const kafkaProducer = require("simple-kafka-producer")
 
-// Configuration
+const config = require("./config");
+
+const intercept = require("./lib/intercept");
+const helpers = require("./lib/proxy-helpers");
+
+// Configure our Kafka producer
+kafkaProducer.configure({
+    brokers: Array.isArray(config.kafka.brokers) ? config.kafka.brokers.join(",") : config.kafka.brokers,
+    useSasl: config.kafka.sasl.use,
+    saslUser: config.kafka.sasl.username,
+    saslPass: config.kafka.sasl.password
+})
+
+// Topic we're producing to
+const KAFKA_XAPI_TOPIC = config.kafka.topic;
+
+// Set up our proxy using either config or env
 //
-const PROXY_TARGET = (process.env.PROXY_TARGET || "https://lrs.adlnet.gov");
-const KAFKA_BROKER = (process.env.KAFKA_BROKER || "http://192.168.30.188:9092");
-const KAFKA_XAPI_TOPIC = (process.env.KAFKA_XAPI_TOPIC || "topic");
-const PORT = (process.env.PORT || 8085);
+const PROXY_LRS_ROOT = config.proxyRoot;
+const CAN_INFER = (config.infer == "true")
+
+const REDIRECT_URL = PROXY_LRS_ROOT.endsWith("/") ? PROXY_LRS_ROOT.substring(0, PROXY_LRS_ROOT.length - 1) : PROXY_LRS_ROOT;
 
 // Create an instance of the express class and declare our port
+const PORT = (process.env.PORT || 8085);
 const app = express();
 
-// Set EJS as our view engine for partial templates
-app.set("view engine", "ejs");
-
-// Express makes it easier to parse our request body, removing the
-// ugly callback system from the default http module
-app.use(bodyParser.json())
-
-// Since the point of this service is to receive and respond to requests
-// from other services, we need to make sure the cross domain middleware
-// is running
-app.use(cors())
-
-app.options("*", function(req, res) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", '*');
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    res.end();
-});
-
-// Port we're redirecting to
-//
-const PROXY_RAW = PROXY_TARGET;
-const REDIRECT_URL = PROXY_RAW.endsWith("/") ? PROXY_RAW.substring(0, PROXY_RAW.length - 1) : PROXY_RAW;
+// Parse everything as text.  It might be tempting to use a JSON parser here,
+// but this actually causes quite a few issues with spec conformance as our
+// requests aren't ever guaranteed to be in JSON.  Even if we only specify the 
+// application/json content-type, oddly enough there are still issues.
+app.use(bodyParser.text({
+    type: "*/*"
+}));
 
 // Main index page.  Shows the registered services and their most recent statuses.
 app.use("/", proxy(REDIRECT_URL, {
 
-    // "intercept" is deprecated and the deprecation message is actually wrong.
-    // This will give us access to the:
-    //      - original request (req)
-    //      - original response (res)
-    //      - the response this proxy service will send back (proxyRes) 
-    //      - the data this proxy service will include in its response (proxyResData)
-    //
-    userResDecorator: function(proxyRes, proxyResData, req, res) {
+    // This was originally called "intercept", but the proxy library changed.  It's going
+    // to let us check the proxied server's response to the request and this will enable
+    // us to see if a statement was sent to the LRS and accepted.
+    userResDecorator: function (proxyRes, proxyResData, req, res) {
 
-        // Assign our CORS stuff
-        proxyRes.headers["Access-Control-Allow-Origin"] = "*";
-        proxyRes.headers["Access-Control-Allow-Methods"] = "*";
-        proxyRes.headers["Access-Control-Allow-Headers"] = "*";
+        // The actual process of parsing the response is a bit involved, so we're doing this
+        // with a promise chain to make sure the response from our server gets back asap.  
+        intercept(req, proxyRes, proxyResData)
+            .then(promisePayload => {
 
-        // Intercept POST requests to write xAPI to the log
-        if (req.method == "POST") {
+                // This could've been a request we don't care about, in which case there 
+                // isn't anything to do here at all.  Skip these.
+                if (promisePayload == undefined || promisePayload.ids == undefined)
+                    return;
 
-            // Intercept xAPI statements
-            if (req.url.toLowerCase().endsWith("/statements")) {
+                // This is the problematic case: we weren't able to definitely determine the statements from
+                // the request/response interaction.  This can happen because of a weird mismatch or from an
+                // issue with our hand-rolled multipart parser.
+                if (promisePayload.statements == undefined) {
+
+                    // Regardless, notify the log that we're doing this
+                    console.log("[Proxy]: Manually retrieving statements for:", promisePayload.ids.map(id => "\n\t-" + id))
+                    
+                    // The payload should always include the IDs for our statements though, so we'll use these
+                    // to determine which statements need to be retrieved from our LRS.
+                    promisePayload.ids.forEach(id => helpers.statementFromLRS(REDIRECT_URL, req, id, publishStatement))
+                }
                 
-                // Check if it was accepted
-                if (proxyRes.statusCode == 200) {
-                    
-                    // Get what we stored these statements as
-                    let statementIds = JSON.parse(proxyResData.toString('utf8'));
-                    
-                    // Get each statement we just stored
-                    for (let k=0; k<statementIds.length; k++) {
+                // If nothing weird happened, then we should already have the statements back as-inferred
+                // from our original LRS request.  We can just publish them to Kafka without needing another request.
+                else {
+                    promisePayload.statements.forEach(publishStatement)
+                }
 
-                        // Statement UUID from the response
-                        let id = statementIds[k];
-                        
-                        // Do this with promises so we can stay async
-                        //
-                        axios.get(REDIRECT_URL + req.url + "?statementId=" + id, {
-                            headers: {
-                                "Authorization": req.get("Authorization"),
-                                "X-Experience-API-Version": req.get("X-Experience-API-Version")
-                            }
-                        })
-                        .then(response => {
-                            publishStatement(response.data);
-                        })
-                        .catch(error => {
-                            console.log("[Proxy] Error retrieving statement from LRS: ", error);
-                        })
-                    }
-                };
-            }
-        }
+            })
+            .catch(error => console.log("[Proxy Error]: Statement error:\n", error))
 
         return proxyResData;
     }
 }));
 
-// Initialize the Kafka connection
-const producer = new kafka.Producer({
-    connectionString: KAFKA_BROKER
-});
-producer.init()
-.then(function(){
-    console.log("[Kafka] Producer initialized, will target: ", KAFKA_BROKER);
-})
-.catch(function(error){
-    console.log("[Kafka] Initialization Error: ", error);
+// Set up our Kafka stuff.  This is largely boilerplate / streamlined so we don't need ti here.
+kafkaProducer.initProducer();
+kafkaProducer.setCallback((topic, offset, statement) => {
+    console.log(`[Kafka] Produced statement ${statement.id}`);
 })
 
-// This will be called from the promise in our proxy interception callback's axios promise
+/**
+ * Publish the statement to the configured Kafka topic.
+ * @param {Object} statement - xAPI Statement we're producing to Kafka. 
+ */
 function publishStatement(statement) {
-
-    producer.send({
-        topic: KAFKA_XAPI_TOPIC,
-        partition: 0,
-        message: {
-            value: JSON.stringify(statement)   
-        }
-    })
-    .then(function(result) {
-        console.log("[Kafka] Statement published: ", statement);
-    })
-    .catch(function(error){
-        console.log("[Kafka] Error publishing statement: ", error);
-    });
+    kafkaProducer.produceMessage(KAFKA_XAPI_TOPIC, JSON.stringify(statement))
 }
 
 // Then start the server.
@@ -136,4 +105,9 @@ app.listen(PORT, "0.0.0.0", function(){
 
     console.log("\n[Proxy]: LRS Wrapper Service listening on port %s", PORT);
     console.log("[Proxy]: Relaying traffic to %s", REDIRECT_URL);
+
+    if (CAN_INFER == true)
+        console.log("[Proxy]: INFERENCE MODE: Proxy will infer statements instead of polling LRS.")
+    else
+        console.log("[Proxy]: LITERAL MODE: Proxy will poll statements from the LRS.")
 });

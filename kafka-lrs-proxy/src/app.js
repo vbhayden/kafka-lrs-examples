@@ -1,6 +1,4 @@
-// Entry Point for the LRS ReRoute Service.
-//
-// This is a NodeJS Express application 
+// Entry Point for the LRS Proxy Service.
 //
 const express = require("express");
 const proxy = require("express-http-proxy");

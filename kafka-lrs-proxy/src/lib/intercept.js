@@ -105,15 +105,8 @@ function intercept(req, proxyRes, proxyResData, cb) {
         // Alternate request syntax
         else if (req.method == "POST" && status == 204 && req.query.method == "PUT") {
 
-            // Check if this was an alternate request syntax
-            if (req.query.method != undefined)
-            {
-                console.log("ALTERNATE REQUEST SYNTAX:")
-                console.log("DATA:", proxyResData)
-                console.log(req.query.content)
-
-                return proxyResData;
-            }
+            // Not implemented yet
+            return;
         }
 
         // The PUT is pretty simple as there's only one statement and nothing weird
